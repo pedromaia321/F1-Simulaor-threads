@@ -1,0 +1,23 @@
+package f1.eventos;
+
+public enum TipoEvento {
+    NENHUM,
+    ERRO_PILOTO,
+    RODADA,
+    TRAVADA_PNEU,
+    PNEU_FURADO,
+    DANO_ASA,
+    ACIDENTE,
+    MOTOR,
+    CAMBIO,
+    PROBLEMA_ELETRICO,
+    LIMITE_DE_PISTA,
+    BANDEIRA_AMARELA,
+    VSC,
+    SAFETY_CAR,
+    BANDEIRA_VERMELHA,
+    PENALIDADE_5S,
+    PENALIDADE_10S,
+    DRIVE_THROUGH,
+    STOP_AND_GO
+}
