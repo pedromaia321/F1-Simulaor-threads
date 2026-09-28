@@ -86,3 +86,34 @@ java -cp out f1.Main
 ## Observação
 
 Os overalls são parâmetros do simulador acadêmico e podem ser ajustados sem alterar a arquitetura.
+
+## Atualização de apresentação — tempos e pit stops
+
+- Tempos de volta e classificação agora são exibidos no formato `minuto:segundo.milisegundo`.
+  - Exemplo: `96 segundos` aparece como `1:36.000`.
+- Cores no console:
+  - amarelo: volta mais lenta que a volta anterior;
+  - verde: volta mais rápida que a volta anterior;
+  - roxo: nova melhor volta absoluta da corrida.
+- A saída mostra somente o tempo de volta de cada carro, sem tempos de setores.
+- As pausas artificiais da simulação foram reduzidas para a demonstração terminar mais rápido.
+- Cada carro tem dois pit stops estratégicos obrigatórios. Um furo ou dano pode causar pit stop extra.
+- Charles Leclerc possui um evento específico de batida no muro com chance base de `0,30% por volta`, aumentada em condições de chuva.
+
+
+## Ritmo visual para apresentação
+
+A versão de apresentação segura cada volta na tela por **1 segundo** antes de liberar as Threads para a próxima volta.
+O valor fica em `Main.java`:
+
+```java
+private static final long PAUSA_ENTRE_VOLTAS_MS = 1000;
+```
+
+Sugestões:
+- `1500` = bem devagar, fácil de acompanhar;
+- `1000` = recomendado para apresentação;
+- `500` = intermediário;
+- `0` = sem pausa, útil para testes.
+
+A pausa acontece no avanço do `Phaser`, então todos os carros continuam sincronizados e os tempos simulados da corrida não são alterados.
