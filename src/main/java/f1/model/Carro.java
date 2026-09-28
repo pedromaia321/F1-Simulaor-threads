@@ -10,9 +10,13 @@ import java.util.concurrent.ThreadLocalRandom;
 
 public class Carro implements Runnable {
 
+    private static final int PIT_STOPS_MINIMOS = 2;
+
     private final Piloto piloto;
     private final Equipe equipe;
     private final ControleCorrida controle;
+    private final int pitPlanejado1;
+    private final int pitPlanejado2;
 
     private volatile Pneu pneu = Pneu.MEDIUM;
     private volatile Penalidade penalidadeServico = Penalidade.NENHUMA;
@@ -27,10 +31,21 @@ public class Carro implements Runnable {
     private volatile int pitStops;
     private volatile int posicaoLargada;
 
+    private volatile double tempoUltimaVolta = Double.NaN;
+    private volatile double tempoVoltaAnterior = Double.NaN;
+    private volatile double melhorVoltaPessoal = Double.MAX_VALUE;
+
     public Carro(Piloto piloto, Equipe equipe, ControleCorrida controle) {
         this.piloto = piloto;
         this.equipe = equipe;
         this.controle = controle;
+
+        ThreadLocalRandom random = ThreadLocalRandom.current();
+        int total = controle.getTotalVoltas();
+        this.pitPlanejado1 = Math.max(6,
+                (int) Math.round(total * 0.30) + random.nextInt(-2, 3));
+        this.pitPlanejado2 = Math.max(pitPlanejado1 + 10,
+                (int) Math.round(total * 0.64) + random.nextInt(-2, 3));
     }
 
     @Override
@@ -140,6 +155,7 @@ public class Carro implements Runnable {
             tempoVolta -= disputa;
         }
 
+        registrarTempoDaVolta(tempoVolta);
         adicionarTempo(tempoVolta);
 
         double fatorGerenciamento = 1.12 - piloto.getGerenciamentoPneus() / 180.0;
@@ -149,15 +165,31 @@ public class Carro implements Runnable {
             desgastePneu += 1.0;
         }
 
+        // Pequena pausa apenas para a execução ficar visível, sem alongar a apresentação.
         try {
-            Thread.sleep(random.nextInt(6, 20));
+            Thread.sleep(random.nextInt(1, 4));
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             abandonar("thread interrompida");
         }
     }
 
+    private void registrarTempoDaVolta(double tempoVolta) {
+        tempoVoltaAnterior = tempoUltimaVolta;
+        tempoUltimaVolta = tempoVolta;
+
+        if (tempoVolta < melhorVoltaPessoal) {
+            melhorVoltaPessoal = tempoVolta;
+        }
+    }
+
     private void verificarPitStop() {
+        // Regra da apresentação: cada carro faz exatamente dois pit stops estratégicos.
+        // Depois do segundo, só volta ao box se houver dano/furo (pitObrigatorio).
+        if (pitStops >= PIT_STOPS_MINIMOS && !pitObrigatorio) {
+            return;
+        }
+
         Pneu ideal = escolherPneuIdeal();
         boolean pneuErrado = ideal != pneu
                 && (ideal.isChuva() != pneu.isChuva()
@@ -170,12 +202,21 @@ public class Carro implements Runnable {
             case INTERMEDIATE, WET -> 70.0;
         };
 
-        boolean fimProximo = controle.getTotalVoltas() - volta <= 3;
+        int restantes = controle.getTotalVoltas() - volta;
+        boolean obrigatorioPlanejado = (pitStops == 0 && volta >= pitPlanejado1)
+                || (pitStops == 1 && volta >= pitPlanejado2);
+        boolean garantiaFinal = pitStops < PIT_STOPS_MINIMOS
+                && restantes <= Math.max(2, (PIT_STOPS_MINIMOS - pitStops) * 3);
+        boolean desgasteNormal = pitStops < PIT_STOPS_MINIMOS
+                && desgastePneu >= limiteDesgaste;
+        boolean desgasteCritico = desgastePneu >= 94.0;
 
-        if (pitObrigatorio || pneuErrado || (!fimProximo && desgastePneu >= limiteDesgaste)) {
+        if (pitObrigatorio || pneuErrado || obrigatorioPlanejado
+                || garantiaFinal || desgasteNormal || desgasteCritico) {
+
             Pneu novoPneu = ideal;
-            if (!pneuErrado && !pitObrigatorio && !ideal.isChuva()) {
-                novoPneu = escolherCompostoSeco();
+            if (!pneuErrado && !ideal.isChuva()) {
+                novoPneu = escolherCompostoSecoParaPit();
             }
 
             double perda = PitStop.realizar(this, novoPneu);
@@ -189,20 +230,20 @@ public class Carro implements Runnable {
         return switch (controle.getClima()) {
             case CHUVA_FORTE -> Pneu.WET;
             case CHUVA_LEVE -> Pneu.INTERMEDIATE;
-            case SECO, NUBLADO -> escolherCompostoSeco();
+            case SECO, NUBLADO -> escolherCompostoSecoParaPit();
         };
     }
 
-    private Pneu escolherCompostoSeco() {
+    private Pneu escolherCompostoSecoParaPit() {
         int restantes = controle.getTotalVoltas() - volta;
 
-        if (restantes <= 15) {
-            return Pneu.SOFT;
+        if (pitStops == 0) {
+            return restantes > 25 ? Pneu.HARD : Pneu.MEDIUM;
         }
-        if (restantes <= 30) {
-            return Pneu.MEDIUM;
+        if (pitStops == 1) {
+            return restantes <= 20 ? Pneu.SOFT : Pneu.MEDIUM;
         }
-        return Pneu.HARD;
+        return restantes <= 12 ? Pneu.SOFT : Pneu.MEDIUM;
     }
 
     private void cumprirPenalidadeDePassagem() {
@@ -294,4 +335,10 @@ public class Carro implements Runnable {
     public int getPitStops() { return pitStops; }
     public int getPosicaoLargada() { return posicaoLargada; }
     public void setPosicaoLargada(int posicaoLargada) { this.posicaoLargada = posicaoLargada; }
+
+    public double getTempoUltimaVolta() { return tempoUltimaVolta; }
+    public double getTempoVoltaAnterior() { return tempoVoltaAnterior; }
+    public double getMelhorVoltaPessoal() { return melhorVoltaPessoal; }
+    public int getPitPlanejado1() { return pitPlanejado1; }
+    public int getPitPlanejado2() { return pitPlanejado2; }
 }

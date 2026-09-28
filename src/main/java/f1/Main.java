@@ -12,8 +12,10 @@ import java.util.List;
 
 public class Main {
 
+    private static final long PAUSA_ENTRE_VOLTAS_MS = 1500;
+
     public static void main(String[] args) {
-        ControleCorrida controle = new ControleCorrida(58);
+        ControleCorrida controle = new ControleCorrida(58, PAUSA_ENTRE_VOLTAS_MS);
 
         Equipe mercedes = new Equipe("Mercedes", 99, 97, 96, 95);
         Equipe mclaren = new Equipe("McLaren", 97, 96, 96, 98);

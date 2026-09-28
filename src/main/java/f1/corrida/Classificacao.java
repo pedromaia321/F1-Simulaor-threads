@@ -1,6 +1,7 @@
 package f1.corrida;
 
 import f1.model.Carro;
+import f1.util.FormatadorTempo;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -30,11 +31,11 @@ public final class Classificacao {
             grid.add(resultado.carro());
 
             System.out.printf(
-                    "P%-2d %-20s %-13s  %.3fs%n",
+                    "P%-2d %-20s %-13s  %s%n",
                     i + 1,
                     resultado.carro().getPiloto().getNome(),
                     resultado.carro().getEquipe().getNome(),
-                    resultado.tempo()
+                    FormatadorTempo.formatar(resultado.tempo())
             );
         }
 

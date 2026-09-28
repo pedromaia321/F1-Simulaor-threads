@@ -7,6 +7,10 @@ import java.util.concurrent.ThreadLocalRandom;
 
 public final class GerenciadorEventos {
 
+    // Chance base por volta para o evento especial de Charles Leclerc bater no muro.
+    // 0.003 = 0,30% por volta; chuva aumenta essa chance.
+    private static final double CHANCE_MURO_LECLERC = 0.0030;
+
     private GerenciadorEventos() {}
 
     public static void verificarEvento(Carro carro) {
@@ -15,6 +19,10 @@ public final class GerenciadorEventos {
         }
 
         ThreadLocalRandom random = ThreadLocalRandom.current();
+
+        if (verificarBatidaNoMuroLeclerc(carro, random)) {
+            return;
+        }
 
         verificarFalhaMecanica(carro, random);
         if (carro.isAbandonou()) {
@@ -29,6 +37,55 @@ public final class GerenciadorEventos {
         verificarLimitesDePista(carro, random);
     }
 
+
+    private static boolean verificarBatidaNoMuroLeclerc(Carro carro, ThreadLocalRandom random) {
+        if (!"Charles Leclerc".equals(carro.getPiloto().getNome())) {
+            return false;
+        }
+
+        if (carro.getControle().getModoCorrida() != ModoCorrida.NORMAL) {
+            return false;
+        }
+
+        double fatorClima = switch (carro.getControle().getClima()) {
+            case SECO -> 1.0;
+            case NUBLADO -> 1.10;
+            case CHUVA_LEVE -> 1.55;
+            case CHUVA_FORTE -> 2.20;
+        };
+
+        if (random.nextDouble() >= CHANCE_MURO_LECLERC * fatorClima) {
+            return false;
+        }
+
+        System.out.printf("💥 Charles Leclerc bateu no muro! (chance base %.2f%% por volta)%n",
+                CHANCE_MURO_LECLERC * 100.0);
+
+        double gravidade = random.nextDouble();
+        if (gravidade < 0.68) {
+            carro.abandonar("batida no muro");
+
+            if (gravidade < 0.10) {
+                carro.getControle().ativarBandeiraVermelha(
+                        "forte batida de Charles Leclerc no muro", carro.getVolta());
+            } else if (gravidade < 0.52) {
+                carro.getControle().ativarSafetyCar(
+                        "carro de Charles Leclerc parado após bater no muro", carro.getVolta());
+            } else {
+                carro.getControle().ativarVSC(
+                        "remoção do carro de Charles Leclerc", carro.getVolta());
+            }
+        } else {
+            double perda = random.nextDouble(10.0, 22.0);
+            carro.adicionarTempo(perda);
+            carro.marcarPitObrigatorio();
+            System.out.printf("🪽 Leclerc conseguiu continuar, mas danificou a asa (+%.1fs).%n", perda);
+            carro.getControle().ativarBandeiraAmarela(
+                    "Leclerc tocou o muro e deixou detritos", carro.getVolta());
+        }
+
+        return true;
+    }
     private static void verificarFalhaMecanica(Carro carro, ThreadLocalRandom random) {
         int perdaConfiabilidade = 100 - carro.getEquipe().getConfiabilidade();
         double chanceFalha = Math.max(0.00015, perdaConfiabilidade * 0.00006);

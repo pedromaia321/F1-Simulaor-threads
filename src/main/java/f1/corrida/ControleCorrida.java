@@ -3,6 +3,8 @@ package f1.corrida;
 import f1.eventos.Clima;
 import f1.eventos.ModoCorrida;
 import f1.model.Carro;
+import f1.util.CoresConsole;
+import f1.util.FormatadorTempo;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -15,6 +17,7 @@ import java.util.concurrent.ThreadLocalRandom;
 public class ControleCorrida {
 
     private final int totalVoltas;
+    private final long pausaEntreVoltasMs;
     private final List<Carro> carros = new ArrayList<>();
     private final Map<Carro, Integer> posicoesAnteriores = new HashMap<>();
 
@@ -25,12 +28,22 @@ public class ControleCorrida {
 
     private Phaser phaser;
     private volatile int voltaConcluida;
+    private volatile double melhorVoltaCorrida = Double.MAX_VALUE;
+    private volatile String pilotoMelhorVolta = "";
 
     public ControleCorrida(int totalVoltas) {
+        this(totalVoltas, 0);
+    }
+
+    public ControleCorrida(int totalVoltas, long pausaEntreVoltasMs) {
         if (totalVoltas <= 0) {
             throw new IllegalArgumentException("O número de voltas deve ser maior que zero.");
         }
+        if (pausaEntreVoltasMs < 0) {
+            throw new IllegalArgumentException("A pausa entre voltas não pode ser negativa.");
+        }
         this.totalVoltas = totalVoltas;
+        this.pausaEntreVoltasMs = pausaEntreVoltasMs;
     }
 
     public int getTotalVoltas() {
@@ -103,15 +116,17 @@ public class ControleCorrida {
             comprimirPelotao(0.45);
         }
 
+        atualizarMelhorVolta(volta);
         mostrarClassificacaoParcial(volta);
+
+        // Como este método é executado no avanço do Phaser, todas as Threads dos carros
+        // permanecem sincronizadas enquanto a tela fica parada. Isso deixa cada volta
+        // visível por tempo suficiente para a apresentação, sem alterar os tempos simulados.
+        pausarParaApresentacao(pausaEntreVoltasMs);
 
         if (modoCorrida == ModoCorrida.BANDEIRA_VERMELHA) {
             System.out.println("\n🟥 CORRIDA INTERROMPIDA. Aguardando liberação da pista...");
-            try {
-                Thread.sleep(250);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
+            pausarParaApresentacao(Math.max(1800, pausaEntreVoltasMs));
             System.out.println("🟢 REINÍCIO AUTORIZADO.\n");
             modoCorrida = ModoCorrida.NORMAL;
             modoAteVolta = 0;
@@ -124,6 +139,18 @@ public class ControleCorrida {
         }
 
         atualizarClima();
+    }
+
+    private void pausarParaApresentacao(long milissegundos) {
+        if (milissegundos <= 0) {
+            return;
+        }
+
+        try {
+            Thread.sleep(milissegundos);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     private void mostrarClassificacaoParcial(int volta) {
@@ -140,30 +167,28 @@ public class ControleCorrida {
         }
 
         double tempoLider = ativos.get(0).getTempoTotal();
-        int limite = Math.min(10, ativos.size());
 
-        for (int i = 0; i < limite; i++) {
+        for (int i = 0; i < ativos.size(); i++) {
             Carro carro = ativos.get(i);
             int atual = i + 1;
             int anterior = posicoesAnteriores.getOrDefault(carro, carro.getPosicaoLargada());
             String movimento = atual < anterior ? "▲" : atual > anterior ? "▼" : " ";
             String intervalo = i == 0
                     ? "LÍDER"
-                    : String.format("+%.3fs", carro.getTempoTotal() - tempoLider);
+                    : FormatadorTempo.formatarIntervalo(carro.getTempoTotal() - tempoLider);
 
+            String voltaColorida = formatarVoltaColorida(carro);
             System.out.printf(
-                    "P%-2d %s %-20s %-13s %-10s %s%n",
+                    "P%-2d %s %-19s %-12s %-10s | TEMPO DA VOLTA %-24s | %s | pits:%d%n",
                     atual,
                     movimento,
                     carro.getPiloto().getNome(),
                     carro.getEquipe().getNome(),
                     intervalo,
-                    carro.getPneu()
+                    voltaColorida,
+                    carro.getPneu(),
+                    carro.getPitStops()
             );
-        }
-
-        if (ativos.size() > limite) {
-            System.out.printf("... mais %d carros em pista%n", ativos.size() - limite);
         }
 
         for (int i = 0; i < ativos.size(); i++) {
@@ -171,8 +196,37 @@ public class ControleCorrida {
         }
 
         long abandonos = carros.stream().filter(Carro::isAbandonou).count();
-        System.out.printf("Clima: %s | Controle: %s | DNFs: %d%n",
-                clima, modoCorrida, abandonos);
+        System.out.printf("Clima: %s | Controle: %s | DNFs: %d | Melhor volta: %s — %s%n",
+                clima, modoCorrida, abandonos,
+                pilotoMelhorVolta.isBlank() ? "--" : pilotoMelhorVolta,
+                melhorVoltaCorrida == Double.MAX_VALUE ? "--:--.---" : FormatadorTempo.formatar(melhorVoltaCorrida));
+    }
+
+    private void atualizarMelhorVolta(int volta) {
+        for (Carro carro : carros) {
+            if (carro.getVolta() != volta || Double.isNaN(carro.getTempoUltimaVolta())) {
+                continue;
+            }
+
+            if (carro.getTempoUltimaVolta() < melhorVoltaCorrida) {
+                melhorVoltaCorrida = carro.getTempoUltimaVolta();
+                pilotoMelhorVolta = carro.getPiloto().getNome();
+            }
+        }
+    }
+
+    private String formatarVoltaColorida(Carro carro) {
+        double atual = carro.getTempoUltimaVolta();
+        double anterior = carro.getTempoVoltaAnterior();
+        String texto = FormatadorTempo.formatar(atual);
+
+        if (Math.abs(atual - melhorVoltaCorrida) < 0.0005) {
+            return CoresConsole.roxo(texto);
+        }
+        if (Double.isNaN(anterior)) {
+            return CoresConsole.neutro(texto);
+        }
+        return atual < anterior ? CoresConsole.verde(texto) : CoresConsole.amarelo(texto);
     }
 
     private void comprimirPelotao(double intervaloPorCarro) {
@@ -302,4 +356,7 @@ public class ControleCorrida {
     public int getVoltaConcluida() { return voltaConcluida; }
     public String getMotivoModo() { return motivoModo; }
     public List<Carro> getCarros() { return List.copyOf(carros); }
+    public double getMelhorVoltaCorrida() { return melhorVoltaCorrida; }
+    public String getPilotoMelhorVolta() { return pilotoMelhorVolta; }
 }
+

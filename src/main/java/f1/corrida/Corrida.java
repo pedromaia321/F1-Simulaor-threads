@@ -1,6 +1,7 @@
 package f1.corrida;
 
 import f1.model.Carro;
+import f1.util.FormatadorTempo;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -60,19 +61,26 @@ public class Corrida {
 
             for (int i = 0; i < finalistas.size(); i++) {
                 Carro carro = finalistas.get(i);
-                String intervalo = i == 0
-                        ? "VENCEDOR"
-                        : String.format("+%.3fs", carro.getTempoTotal() - lider);
+                String tempo = i == 0
+                        ? FormatadorTempo.formatar(carro.getTempoTotal())
+                        : FormatadorTempo.formatarIntervalo(carro.getTempoTotal() - lider);
 
                 System.out.printf(
-                        "P%-2d %-20s %-13s %-12s | pits: %d%n",
+                        "P%-2d %-20s %-13s %-12s | pits: %d | melhor volta: %s%n",
                         i + 1,
                         carro.getPiloto().getNome(),
                         carro.getEquipe().getNome(),
-                        intervalo,
-                        carro.getPitStops()
+                        tempo,
+                        carro.getPitStops(),
+                        FormatadorTempo.formatar(carro.getMelhorVoltaPessoal())
                 );
             }
+        }
+
+        if (!controle.getPilotoMelhorVolta().isBlank()) {
+            System.out.printf("%n🟣 MELHOR VOLTA DA CORRIDA: %s — %s%n",
+                    controle.getPilotoMelhorVolta(),
+                    FormatadorTempo.formatar(controle.getMelhorVoltaCorrida()));
         }
 
         List<Carro> dnfs = controle.getCarros().stream()
@@ -83,13 +91,15 @@ public class Corrida {
         if (!dnfs.isEmpty()) {
             System.out.println("\nDNFs:");
             for (Carro carro : dnfs) {
-                System.out.printf("- %-20s volta %-2d — %s%n",
+                System.out.printf("- %-20s volta %-2d — %s | pits: %d%n",
                         carro.getPiloto().getNome(),
                         carro.getVolta(),
-                        carro.getMotivoAbandono());
+                        carro.getMotivoAbandono(),
+                        carro.getPitStops());
             }
         }
 
         System.out.println("\n✅ Simulação encerrada sem threads presas.");
     }
+
 }

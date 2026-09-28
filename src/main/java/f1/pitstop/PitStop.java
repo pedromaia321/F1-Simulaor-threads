@@ -44,7 +44,7 @@ public final class PitStop {
             }
 
             try {
-                Thread.sleep(ThreadLocalRandom.current().nextInt(15, 45));
+                Thread.sleep(ThreadLocalRandom.current().nextInt(2, 7));
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
